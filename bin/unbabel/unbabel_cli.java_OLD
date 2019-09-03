@@ -1,0 +1,223 @@
+package unbabel;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public class unbabel_cli {
+	
+	@SuppressWarnings("deprecation")
+	public static void main(String[] args) {
+
+		String sArqJSON = null;
+		int    iWindow = 0;
+		int    iCont = 0;
+		
+
+		// Parsing arguments
+		try {
+	        while (iCont < args.length) {
+
+	            String arg = args[iCont].toLowerCase().trim();
+
+	            if ("--input_file".equals(arg)) {
+	            	
+	            	if(iCont < args.length-1)
+	            	{
+	            		sArqJSON = args[++iCont];
+	            	}
+	            	
+	            } else if ("--window_size".equals(arg)) {
+	            	
+	            	if(iCont < args.length-1)
+	            	{
+	            		iWindow = Integer.parseInt(args[++iCont]);
+	            	}
+	 
+	            } else {
+	                System.out.println("Error: wrong parameter [" + arg + "]. Ignored !");
+	            }
+	            
+	            iCont++;
+	        }
+		} catch (Exception e) {
+        	ShowSintax();
+        	System.exit(1);
+		}
+		
+        if((sArqJSON != null) && (sArqJSON.length() > 0) && (iWindow > 0))
+        {
+	        // Main Loop
+        	int   iSumMedia = 0;
+			float fMedia = 0;
+			Date   ddateAtual = new Date ();
+			Date   ddate = new Date ();
+			int   iLineCount = 0;
+			int   iWindowCount = 0;
+			int   iCountInMin = 0;
+			int   iduration = 0;
+			
+			// Adjust the Window time
+			
+			ddateAtual = addMinutesToDate(-iWindow, ddateAtual);
+						
+			
+			try {
+				BufferedWriter bufwriter = new BufferedWriter(new FileWriter("average.json"));
+				BufferedReader bufreader = new BufferedReader(new FileReader( sArqJSON ));
+				String line = bufreader.readLine();
+				while ( (line != null) && (iWindowCount++ < iWindow) ) {
+
+					iLineCount++;
+					
+					// Converte JSON
+					
+					JSONObject joTranslation = null;
+					try {
+						joTranslation = new JSONObject(line);
+					} catch (JSONException e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}
+					
+					// Verify 
+					String stimestamp = null;
+					try {
+						stimestamp = joTranslation.getString("timestamp");
+					} catch (JSONException e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}
+					SimpleDateFormat sfaux = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+					try {
+						ddate = sfaux.parse(stimestamp);
+					} catch (ParseException e) {
+						e.printStackTrace();
+					}
+			
+					try {
+						iduration = joTranslation.getInt("duration");
+					} catch (JSONException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					
+					if(iLineCount==1)
+					{
+						//ddateAtual = ddate;
+						iWindowCount = 1;
+					}
+					
+					while (true)
+					{
+						if((ddate.getYear() == ddateAtual.getYear()) && (ddate.getMonth() == ddateAtual.getMonth() ) 
+							&& (ddate.getDay()  == ddateAtual.getDay() ) &&  (ddate.getHours()  == ddateAtual.getHours() )
+							&&  (ddate.getMinutes()  == ddateAtual.getMinutes() ))
+						{
+							iCountInMin++;
+							
+							if(iCountInMin == 0) 
+								iSumMedia = iduration;
+							else
+								iSumMedia += iduration;
+							break;
+							
+						}
+						else
+						{
+							SimpleDateFormat sfaux2 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+							String sOutDate = sfaux2.format(ddateAtual);
+							if(iCountInMin > 0)
+								fMedia = iSumMedia / iCountInMin;
+							else
+								fMedia = 0;
+
+							bufwriter.write("{\"date\": \"" + sOutDate + "\", \"average_delivery_time\": " + formatar(fMedia) + "}");
+							bufwriter.newLine();						
+						    
+							// adjust controls
+							iCountInMin = 0;
+							if(iWindowCount++ < iWindow)
+							{
+								fMedia = 0;
+								ddateAtual = addMinutesToDate(1, ddateAtual);
+							}
+							else
+							{
+								fMedia = 0;
+								break;
+							}
+						}
+					}
+					
+					
+					// read next line
+					line = bufreader.readLine();
+				}
+				bufreader.close();
+				
+				// Take the last line
+				if(iLineCount > 0)
+				{
+					
+					SimpleDateFormat sfaux2 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+					String sOutDate = sfaux2.format(ddateAtual);
+					if(iCountInMin > 0)
+						fMedia = iSumMedia / iCountInMin;
+					else
+						fMedia = 0;
+
+					bufwriter.write("{\"date\": \"" + sOutDate + "\", \"average_delivery_time\": " + formatar(fMedia) + "}");
+					bufwriter.newLine();
+					
+				}
+				
+				bufwriter.flush();
+				bufwriter.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}		
+        }
+        else
+        {
+        	ShowSintax();
+        	System.exit(1);
+        }
+		
+	}
+	
+	static float ComputAvg(int duration, float avg) {
+		return (duration + avg) / 2;
+	}
+	
+	static void ShowSintax() {
+    	System.out.println("Sintax: unbabel_cli --input_file <file pathname> --window_size <window size in minutes>");		
+	}
+	
+	private static Date addMinutesToDate(int minutes, Date ddateAtual){
+	    final long ONEMINUTEINMILLIS = 60000;
+
+	    long curTimeInMs = ddateAtual.getTime();
+	    Date afterAddingMins = new Date(curTimeInMs + (minutes * ONEMINUTEINMILLIS));
+	    return afterAddingMins;
+	}
+	
+	private static String formatar(double d) {
+		if (d == Math.floor(d)) {
+		    return String.format("%.0f", d);
+		} else {
+		    return Double.toString(d);
+		}
+	}
+	
+	
+}
+
